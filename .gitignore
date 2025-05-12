@@ -4,3 +4,4 @@ rt
 /build
 *.o
 *.so
+cudart
