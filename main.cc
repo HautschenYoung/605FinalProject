@@ -66,7 +66,7 @@ int main() {
     int nx = 1200;
     int ny = 800;
     int ns = 10;
-    // std::vector<vec3> framebuffer(nx * ny);
+    std::vector<vec3> framebuffer(nx * ny);
     std::cout << "P3\n" << nx << " " << ny << "\n255\n";
     hitable *list[5];
     float R = cos(M_PI/4);
@@ -85,70 +85,70 @@ int main() {
 
     camera cam(lookfrom, lookat, vec3(0,1,0), 20, float(nx)/float(ny), aperture, dist_to_focus);
 
-    // int num_threads = std::thread::hardware_concurrency();
-    // std::cout << "Number of threads: " << num_threads << std::endl;
-    // std::thread threads[num_threads];
-    // int rows_per_thread = ny / num_threads;
-    // auto renderRow = [&](uint32_t start_row, uint32_t end_row) {
-    //     for (int j = start_row; j < end_row; j++) {
-    //         for (int i = 0; i < nx; i++) {
-    //             vec3 col(0, 0, 0);
-    //             for (int s=0; s < ns; s++) {
-    //                 std::mt19937 rng(std::random_device{}());
-    //                 std::uniform_real_distribution<float> dist(0.0, 1.0);
+    int num_threads = std::thread::hardware_concurrency();
+    std::cout << "Number of threads: " << num_threads << std::endl;
+    std::thread threads[num_threads];
+    int rows_per_thread = ny / num_threads;
+    auto renderRow = [&](uint32_t start_row, uint32_t end_row) {
+        for (int j = start_row; j < end_row; j++) {
+            for (int i = 0; i < nx; i++) {
+                vec3 col(0, 0, 0);
+                for (int s=0; s < ns; s++) {
+                    std::mt19937 rng(std::random_device{}());
+                    std::uniform_real_distribution<float> dist(0.0, 1.0);
 
-    //                 float u = float(i + dist(rng)) / float(nx);
-    //                 float v = float(j + dist(rng)) / float(ny);
-    //                 // float u = float(i + drand48()) / float(nx);
-    //                 // float v = float(j + drand48()) / float(ny);
-    //                 ray r = cam.get_ray(u, v);
-    //                 vec3 p = r.point_at_parameter(2.0);
-    //                 col += color(r, world,0);
-    //             }
-    //             col /= float(ns);
-    //             col = vec3( sqrt(col[0]), sqrt(col[1]), sqrt(col[2]) );
-    //             // Store the color in the framebuffer
-    //             framebuffer[j * nx + i] = col;
-    //             // // Output the color to the console
-    //             // std::cout << ir << " " << ig << " " << ib << "\n";
-    //         }
-    //     }
-    // };
-    // for(int i=0;i<num_threads - 1;i++){
-    //     threads[i] = std::thread(renderRow,i*rows_per_thread,(i+1)*rows_per_thread);
-    // }
-    // threads[num_threads - 1] = std::thread(renderRow,(num_threads-1)*rows_per_thread,ny);
-    // for(int i=0;i<num_threads;i++){
-    //     threads[i].join();
-    // }
-    // // Output the framebuffer to the console
-    // for (int j = ny - 1; j >= 0; j--) {
-    //     for (int i = 0; i < nx; i++) {
-    //         vec3 col = framebuffer[j * nx + i];
-    //         int ir = int(255.99*col[0]);
-    //         int ig = int(255.99*col[1]);
-    //         int ib = int(255.99*col[2]);
-    //         std::cout << ir << " " << ig << " " << ib << "\n";
-    //     }
-    // }
-    
-
-    for (int j = ny-1; j >= 0; j--) {
-        for (int i = 0; i < nx; i++) {
-            vec3 col(0, 0, 0);
-            for (int s=0; s < ns; s++) {
-                float u = float(i + drand48()) / float(nx);
-                float v = float(j + drand48()) / float(ny);
-                ray r = cam.get_ray(u, v);
-                vec3 p = r.point_at_parameter(2.0);
-                col += color(r, world,0);
+                    float u = float(i + dist(rng)) / float(nx);
+                    float v = float(j + dist(rng)) / float(ny);
+                    // float u = float(i + drand48()) / float(nx);
+                    // float v = float(j + drand48()) / float(ny);
+                    ray r = cam.get_ray(u, v);
+                    vec3 p = r.point_at_parameter(2.0);
+                    col += color(r, world,0);
+                }
+                col /= float(ns);
+                col = vec3( sqrt(col[0]), sqrt(col[1]), sqrt(col[2]) );
+                // Store the color in the framebuffer
+                framebuffer[j * nx + i] = col;
+                // // Output the color to the console
+                // std::cout << ir << " " << ig << " " << ib << "\n";
             }
-            col /= float(ns);
-            col = vec3( sqrt(col[0]), sqrt(col[1]), sqrt(col[2]) );
+        }
+    };
+    for(int i=0;i<num_threads - 1;i++){
+        threads[i] = std::thread(renderRow,i*rows_per_thread,(i+1)*rows_per_thread);
+    }
+    threads[num_threads - 1] = std::thread(renderRow,(num_threads-1)*rows_per_thread,ny);
+    for(int i=0;i<num_threads;i++){
+        threads[i].join();
+    }
+    // Output the framebuffer to the console
+    for (int j = ny - 1; j >= 0; j--) {
+        for (int i = 0; i < nx; i++) {
+            vec3 col = framebuffer[j * nx + i];
             int ir = int(255.99*col[0]);
             int ig = int(255.99*col[1]);
             int ib = int(255.99*col[2]);
             std::cout << ir << " " << ig << " " << ib << "\n";
         }
     }
+    
+
+    // for (int j = ny-1; j >= 0; j--) {
+    //     for (int i = 0; i < nx; i++) {
+    //         vec3 col(0, 0, 0);
+    //         for (int s=0; s < ns; s++) {
+    //             float u = float(i + drand48()) / float(nx);
+    //             float v = float(j + drand48()) / float(ny);
+    //             ray r = cam.get_ray(u, v);
+    //             vec3 p = r.point_at_parameter(2.0);
+    //             col += color(r, world,0);
+    //         }
+    //         col /= float(ns);
+    //         col = vec3( sqrt(col[0]), sqrt(col[1]), sqrt(col[2]) );
+    //         int ir = int(255.99*col[0]);
+    //         int ig = int(255.99*col[1]);
+    //         int ib = int(255.99*col[2]);
+    //         std::cout << ir << " " << ig << " " << ib << "\n";
+    //     }
+    // }
 }
