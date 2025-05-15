@@ -1,4 +1,7 @@
 #include <iostream>
+#include <fstream>
+#include <time.h>
+#include <sys/resource.h>
 #include "sphere.h"
 #include "hitable_list.h"
 #include "float.h"
@@ -62,12 +65,22 @@ hitable *random_scene() {
     return new hitable_list(list,i);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    int spp = 0;
+    if (argc == 1) {
+        spp = 10;
+    }
+    else {
+        spp = atoi(argv[1]);
+    }
+
     int nx = 1200;
     int ny = 800;
-    int ns = 10;
-    // std::vector<vec3> framebuffer(nx * ny);
-    std::cout << "P3\n" << nx << " " << ny << "\n255\n";
+    int ns = spp;
+
+    std::cout << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
+    std::vector<vec3> framebuffer(nx * ny);
+    // std::cout << "P3\n" << nx << " " << ny << "\n255\n";
     hitable *list[5];
     float R = cos(M_PI/4);
     list[0] = new sphere(vec3(0,0,-1), 0.5, new lambertian(vec3(0.1, 0.2, 0.5)));
@@ -132,6 +145,9 @@ int main() {
     //     }
     // }
     
+    // compute CPU time
+    clock_t start, end;
+    start = clock();
 
     for (int j = ny-1; j >= 0; j--) {
         for (int i = 0; i < nx; i++) {
@@ -145,10 +161,36 @@ int main() {
             }
             col /= float(ns);
             col = vec3( sqrt(col[0]), sqrt(col[1]), sqrt(col[2]) );
+            // Store the color in the framebuffer
+            framebuffer[j * nx + i] = col;
+            // int ir = int(255.99*col[0]);
+            // int ig = int(255.99*col[1]);
+            // int ib = int(255.99*col[2]);
+            // std::cout << ir << " " << ig << " " << ib << "\n";
+        }
+    }
+    end = clock();
+    double cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    std::cout << "CPU time: " << cpu_time_used << " seconds" << std::endl;
+
+    // measure CPU memory usage
+    struct rusage usage;
+    getrusage(RUSAGE_SELF, &usage);
+    std::cerr << "CPU Memory Usage: " << usage.ru_maxrss / 1024.0 << " MB.\n";
+
+    // store framebuffer to file
+    std::ofstream outfile("single.ppm");
+    outfile << "P3\n" << nx << " " << ny << "\n255\n";
+    for (int j = ny-1; j >= 0; j--) {
+        for (int i = 0; i < nx; i++) {
+            vec3 col = framebuffer[j * nx + i];
             int ir = int(255.99*col[0]);
             int ig = int(255.99*col[1]);
             int ib = int(255.99*col[2]);
-            std::cout << ir << " " << ig << " " << ib << "\n";
+            outfile << ir << " " << ig << " " << ib << "\n";
         }
     }
+    outfile.close();
+
+    return 0;
 }
