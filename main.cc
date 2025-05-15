@@ -1,4 +1,7 @@
 #include <iostream>
+#include <fstream>
+#include <chrono>
+#include <sys/resource.h>
 #include "sphere.h"
 #include "hitable_list.h"
 #include "float.h"
@@ -62,12 +65,20 @@ hitable *random_scene() {
     return new hitable_list(list,i);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    int spp = 0;
+    if (argc == 1) {
+        spp = 10;
+    }
+    else {
+        spp = atoi(argv[1]);
+    }
     int nx = 1200;
     int ny = 800;
-    int ns = 10;
+    int ns = spp;
+    std::cout << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel.\n";
     std::vector<vec3> framebuffer(nx * ny);
-    std::cout << "P3\n" << nx << " " << ny << "\n255\n";
+    // std::cout << "P3\n" << nx << " " << ny << "\n255\n";
     hitable *list[5];
     float R = cos(M_PI/4);
     list[0] = new sphere(vec3(0,0,-1), 0.5, new lambertian(vec3(0.1, 0.2, 0.5)));
@@ -114,6 +125,9 @@ int main() {
             }
         }
     };
+    // record start time
+    auto start = std::chrono::high_resolution_clock::now();
+
     for(int i=0;i<num_threads - 1;i++){
         threads[i] = std::thread(renderRow,i*rows_per_thread,(i+1)*rows_per_thread);
     }
@@ -121,16 +135,40 @@ int main() {
     for(int i=0;i<num_threads;i++){
         threads[i].join();
     }
-    // Output the framebuffer to the console
+    // record end time
+    auto end = std::chrono::high_resolution_clock::now();
+    double duration = std::chrono::duration<double>(end - start).count();
+    std::cout << "Render CPU time: " << duration << " seconds" << std::endl;
+
+    // compute memory usage
+    struct rusage usage;
+    getrusage(RUSAGE_SELF, &usage);
+    std::cout << "CPU Memory Usage: " << usage.ru_maxrss / 1024.0 << " MB.\n";
+
+    // save framebuffer to file
+    std::ofstream outfile("output.ppm");
+    outfile << "P3\n" << nx << " " << ny << "\n255\n";
     for (int j = ny - 1; j >= 0; j--) {
         for (int i = 0; i < nx; i++) {
             vec3 col = framebuffer[j * nx + i];
             int ir = int(255.99*col[0]);
             int ig = int(255.99*col[1]);
             int ib = int(255.99*col[2]);
-            std::cout << ir << " " << ig << " " << ib << "\n";
+            outfile << ir << " " << ig << " " << ib << "\n";
         }
     }
+    outfile.close();
+
+    // // Output the framebuffer to the console
+    // for (int j = ny - 1; j >= 0; j--) {
+    //     for (int i = 0; i < nx; i++) {
+    //         vec3 col = framebuffer[j * nx + i];
+    //         int ir = int(255.99*col[0]);
+    //         int ig = int(255.99*col[1]);
+    //         int ib = int(255.99*col[2]);
+    //         std::cout << ir << " " << ig << " " << ib << "\n";
+    //     }
+    // }
     
 
     // for (int j = ny-1; j >= 0; j--) {
@@ -151,4 +189,5 @@ int main() {
     //         std::cout << ir << " " << ig << " " << ib << "\n";
     //     }
     // }
+    return 0;
 }
