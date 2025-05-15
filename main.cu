@@ -1,7 +1,10 @@
 #include <iostream>
+#include <fstream>
 #include <time.h>
 #include <float.h>
 #include <curand_kernel.h>
+#include <sys/resource.h>
+#include <cuda_runtime.h>
 #include "vec3.h"
 #include "ray.h"
 #include "sphere.h"
@@ -145,12 +148,23 @@ __global__ void free_world(hitable **d_list, hitable **d_world, camera **d_camer
     delete *d_camera;
 }
 
-int main() {
+int main(int argc, char** argv) {
+    int spp = 0;
+    if (argc == 1) {
+        spp = 10;
+    }
+    else {
+        spp = atoi(argv[1]);
+    }
+    
     int nx = 1200;
     int ny = 800;
-    int ns = 10;
+    int ns = spp;
     int tx = 8;
     int ty = 8;
+    cudaEvent_t gpu_start, gpu_stop;
+    cudaEventCreate(&gpu_start);
+    cudaEventCreate(&gpu_stop);
 
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
@@ -186,6 +200,7 @@ int main() {
     checkCudaErrors(cudaDeviceSynchronize());
 
     clock_t start, stop;
+    cudaEventRecord(gpu_start, 0);
     start = clock();
     // Render our buffer
     dim3 blocks(nx/tx+1,ny/ty+1);
@@ -196,23 +211,66 @@ int main() {
     render<<<blocks, threads>>>(fb, nx, ny,  ns, d_camera, d_world, d_rand_state);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
-    stop = clock();
-    double timer_seconds = ((double)(stop - start)) / CLOCKS_PER_SEC;
-    std::cerr << "took " << timer_seconds << " seconds.\n";
 
-    // Output FB as Image
-    std::cout << "P3\n" << nx << " " << ny << "\n255\n";
+    cudaEventRecord(gpu_stop, 0);
+    cudaEventSynchronize(gpu_stop);
+    stop = clock();
+
+    // compute GPU time
+    float gpu_time_ms = 0.0f;
+    cudaEventElapsedTime(&gpu_time_ms, gpu_start, gpu_stop);
+    std::cerr << "GPU Time: " << gpu_time_ms / 1000.0f << " seconds.\n";
+
+    // compute CPU time
+    double timer_seconds = ((double)(stop - start)) / CLOCKS_PER_SEC;
+    std::cerr << "CPU Time: " << timer_seconds << " seconds.\n";
+
+    // measure GPU memory
+    size_t free_mem, total_mem;
+    cudaMemGetInfo(&free_mem, &total_mem);
+    std::cerr << "GPU Memory Usage: " << (total_mem - free_mem) / (1024.0 * 1024.0) << " MB used, "
+            << free_mem / (1024.0 * 1024.0) << " MB free, "
+            << total_mem / (1024.0 * 1024.0) << " MB total.\n";
+
+    // measure CPU memory
+    struct rusage usage;
+    getrusage(RUSAGE_SELF, &usage);
+    std::cerr << "CPU Memory Usage: " << usage.ru_maxrss / 1024.0 << " MB.\n";
+
+
+    // save FB to file
+    std::ofstream out("cuda.ppm");
+    if (!out) {
+        std::cerr << "Error opening file for output.\n";
+        return 1;
+    }
+    out << "P3\n" << nx << " " << ny << "\n255\n";
     for (int j = ny-1; j >= 0; j--) {
         for (int i = 0; i < nx; i++) {
             size_t pixel_index = j*nx + i;
             int ir = int(255.99*fb[pixel_index].r());
             int ig = int(255.99*fb[pixel_index].g());
             int ib = int(255.99*fb[pixel_index].b());
-            std::cout << ir << " " << ig << " " << ib << "\n";
+            out << ir << " " << ig << " " << ib << "\n";
         }
     }
+    out.close();
+    
+    // // Output FB as Image
+    // std::cout << "P3\n" << nx << " " << ny << "\n255\n";
+    // for (int j = ny-1; j >= 0; j--) {
+    //     for (int i = 0; i < nx; i++) {
+    //         size_t pixel_index = j*nx + i;
+    //         int ir = int(255.99*fb[pixel_index].r());
+    //         int ig = int(255.99*fb[pixel_index].g());
+    //         int ib = int(255.99*fb[pixel_index].b());
+    //         std::cout << ir << " " << ig << " " << ib << "\n";
+    //     }
+    // }
 
     // clean up
+    cudaEventDestroy(gpu_start);
+    cudaEventDestroy(gpu_stop);
     checkCudaErrors(cudaDeviceSynchronize());
     free_world<<<1,1>>>(d_list,d_world,d_camera);
     checkCudaErrors(cudaGetLastError());
